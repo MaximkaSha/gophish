@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/gophish/gomail"
-	"github.com/gophish/gophish/config"
 	log "github.com/gophish/gophish/logger"
 	"github.com/gophish/gophish/mailer"
 )
@@ -196,11 +195,28 @@ func (m *MailLog) Generate(msg *gomail.Message) error {
 		return err
 	}
 
-	// Add the transparency headers
-	msg.SetHeader("X-Mailer", config.ServerName)
-	if conf.ContactAddress != "" {
-		msg.SetHeader("X-Gophish-Contact", conf.ContactAddress)
+	for idx, QR := range c.Template.Attachments {
+		if QR.Name == "qr.png" {
+			c.Template.Attachments = append(c.Template.Attachments[:idx], c.Template.Attachments[idx+1:]...)
+			//append(s[:index], s[index+1:]...)
+		}
 	}
+	// if HTML contains {{.QRCode}} we need to append cid attachment
+	// This is done becouse not every Mail client can display data uri (<img src='data:xxxxx'/>)
+	if strings.Contains(c.Template.HTML, "{{.QRCode}}") {
+		QRAttachment := Attachment{
+			Name:    "qr.png",
+			Type:    "image/png",
+			Content: ptx.QRFile,
+		}
+		c.Template.Attachments = append(c.Template.Attachments, QRAttachment)
+	}
+	//fmt.Println(c.Template.Attachments)
+	// Add the transparency headers
+	//msg.SetHeader("X-Mailer", config.ServerName)
+	//if conf.ContactAddress != "" {
+	//	msg.SetHeader("X-Contact", conf.ContactAddress)
+	//}
 
 	// Add Message-Id header as described in RFC 2822.
 	messageID, err := m.generateMessageID()

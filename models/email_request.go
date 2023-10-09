@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"net/mail"
+	"strings"
 
 	"github.com/gophish/gomail"
 	"github.com/gophish/gophish/config"
@@ -110,6 +111,16 @@ func (s *EmailRequest) Generate(msg *gomail.Message) error {
 	if err != nil {
 		return err
 	}
+	// if HTML contains {{.QRCode}} we need to append cid attachment
+	// This is done becouse not every Mail client can display data uri (<img src='data:xxxxx'/>)
+	if strings.Contains(s.Template.HTML, "{{.QRCode}}") {
+		QRAttachment := Attachment{
+			Name:    "qr.png",
+			Type:    "image/png",
+			Content: ptx.QRFile,
+		}
+		s.Template.Attachments = append(s.Template.Attachments, QRAttachment)
+	}
 
 	url, err := ExecuteTemplate(s.URL, ptx)
 	if err != nil {
@@ -120,7 +131,7 @@ func (s *EmailRequest) Generate(msg *gomail.Message) error {
 	// Add the transparency headers
 	msg.SetHeader("X-Mailer", config.ServerName)
 	if conf.ContactAddress != "" {
-		msg.SetHeader("X-Gophish-Contact", conf.ContactAddress)
+		msg.SetHeader("X-Contact", conf.ContactAddress)
 	}
 
 	// Parse the customHeader templates
@@ -170,6 +181,7 @@ func (s *EmailRequest) Generate(msg *gomail.Message) error {
 	}
 
 	// Attach the files
+
 	for _, a := range s.Template.Attachments {
 		addAttachment(msg, a, ptx)
 	}

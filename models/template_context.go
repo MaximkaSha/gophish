@@ -2,10 +2,15 @@ package models
 
 import (
 	"bytes"
+	"encoding/base64"
+	"fmt"
 	"net/mail"
 	"net/url"
 	"path"
 	"text/template"
+
+	"github.com/skip2/go-qrcode"
+	"github.com/xyproto/png2svg"
 )
 
 // TemplateContext is an interface that allows both campaigns and email
@@ -24,6 +29,8 @@ type PhishingTemplateContext struct {
 	TrackingURL string
 	RId         string
 	BaseURL     string
+	QRCode      string // added QR Code
+	QRFile      string // QRCode base64 file
 	BaseRecipient
 }
 
@@ -56,6 +63,12 @@ func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string
 	q := phishURL.Query()
 	q.Set(RecipientParameter, rid)
 	phishURL.RawQuery = q.Encode()
+	// Generate QR code phishing link and pack it to base64
+	qrCodeImageData, taskError := qrcode.Encode(phishURL.String(), qrcode.High, 256)
+	if taskError != nil {
+		return PhishingTemplateContext{}, err
+	}
+	QRCode := base64.StdEncoding.EncodeToString(qrCodeImageData)
 
 	trackingURL, _ := url.Parse(templateURL)
 	trackingURL.Path = path.Join(trackingURL.Path, "/track")
@@ -69,6 +82,8 @@ func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string
 		Tracker:       "<img alt='' style='display: none' src='" + trackingURL.String() + "'/>",
 		From:          fn,
 		RId:           rid,
+		QRCode:        "<img src='cid:" + "qr.png" + "'>", // cid for qr code
+		QRFile:        QRCode,                             // base64 coded png
 	}, nil
 }
 
@@ -123,4 +138,69 @@ func ValidateTemplate(text string) error {
 		return err
 	}
 	return nil
+}
+
+func PNG2SVG(filename string) error {
+	fmt.Println("Converting png 2 svg")
+
+	var (
+		box          *png2svg.Box
+		x, y         int
+		expanded     bool
+		lastx, lasty int
+		lastLine     int // one message per line / y coordinate
+		done         bool
+	)
+
+	img, err := png2svg.ReadPNG(filename, false)
+	if err != nil {
+		return err
+	}
+
+	height := img.Bounds().Max.Y - img.Bounds().Min.Y
+
+	pi := png2svg.NewPixelImage(img, false)
+	pi.SetColorOptimize(false)
+
+	percentage := 0
+	lastPercentage := 0
+
+	if true {
+		if true {
+			fmt.Print("Placing rectangles... 0%")
+		}
+
+		// Cover pixels by creating expanding rectangles, as long as there are uncovered pixels
+		for true && !done {
+
+			// Select the first uncovered pixel, searching from the given coordinate
+			x, y = pi.FirstUncovered(lastx, lasty)
+
+			if true && y != lastLine {
+				lastPercentage = percentage
+				percentage = int((float64(y) / float64(height)) * 100.0)
+				png2svg.Erase(len(fmt.Sprintf("%d%%", lastPercentage)))
+				fmt.Printf("%d%%", percentage)
+				lastLine = y
+			}
+
+			// Create a box at that location
+			box = pi.CreateBox(x, y)
+			// Expand the box to the right and downwards, until it can not expand anymore
+			expanded = pi.Expand(box)
+
+			// Use the expanded box. Color pink if it is > 1x1, and colorPink is true
+			pi.CoverBox(box, expanded && false, false)
+
+			// Check if we are done, searching from the current x,y
+			done = pi.Done(x, y)
+		}
+
+		if true {
+			png2svg.Erase(len(fmt.Sprintf("%d%%", lastPercentage)))
+			fmt.Println("100%")
+		}
+	}
+
+	return pi.WriteSVG("qr.svg")
 }
